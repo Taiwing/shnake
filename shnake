@@ -32,13 +32,6 @@ function getxy()
 	echo "$X $Y"
 }
 
-######################### random coordinate generator ##########################
-
-function rand_coord()
-{
-	echo "$((RANDOM%$1))"
-}
-
 ################################### tmove ######################################
 
 function tputxy()
@@ -103,7 +96,7 @@ function collide_test()
 	local Y=$(echo $1 | cut -d_ -f2)
 	local POS=$((Y*COLS+X))
 
-	return ${SCREEN[$POS]}
+	return ${SCREEN[@]:$POS:1}
 }
 
 ########################### get terminal dimensions ############################
@@ -152,7 +145,7 @@ function is_high_score()
 
 	while [ $i -gt 0 ]; do
 		((i--))
-		CUR=$(echo ${HIGH_SCORE[$i]} | cut -d_ -f2)
+		CUR=$(echo ${HIGH_SCORE[@]:$i:1} | cut -d_ -f2)
 		if [ $CUR -ge $SCORE ]; then
 			((i++))
 			break
@@ -170,8 +163,8 @@ function print_high_score()
 	local X=$((COLS/2-10))
 	local Y=$((LINES/2+6))
 	while [ $i -lt $LEN -a $Y -lt $LINES ]; do
-		local PLAYER_LOC=$(echo "${HIGH_SCORE[$i]}" | cut -d_ -f1)
-		local SCORE=$(echo "${HIGH_SCORE[$i]}" | cut -d_ -f2)
+		local PLAYER_LOC=$(echo "${HIGH_SCORE[@]:$i:1}" | cut -d_ -f1)
+		local SCORE=$(echo "${HIGH_SCORE[@]:$i:1}" | cut -d_ -f2)
 		local STR="$(printf "%-13s%07d" "$PLAYER_LOC" $SCORE)"
 		tputxy "$STR" $X $Y
 		((i++))
@@ -253,7 +246,7 @@ function print_game_over_screen()
 		tputxy "                    " $((COLS/2-10)) $((LINES/2))
 		local INPUT=""
 		while [ "$INPUT" != "q" ]; do
-			read -sn1 INPUT
+			read -sn 1 INPUT
 		done
 		tput clear
 		return
@@ -301,15 +294,16 @@ NEXT=1
 SCREEN_SIZE=$((COLS*LINES))
 declare -a SNAKE SCREEN
 for ((i=0;i<SCREEN_SIZE;i++)); do
-	SCREEN[$i]=0
+	SCREEN+=(0)
 done
-SNAKE+=("$(rand_coord $COLS)_$(rand_coord $LINES)")
+
+SNAKE+=("$((RANDOM%COLS))_$((RANDOM%LINES))")
 LENGTH=1
 ADD_BLOCKS=0
 
-CHERRY="${SNAKE[$HEAD]}"
-while [ "$CHERRY" == "${SNAKE[$HEAD]}" ]; do
-	CHERRY="$(rand_coord $COLS)_$(rand_coord $LINES)"
+CHERRY="${SNAKE[@]:$HEAD:1}"
+while [ "$CHERRY" = "${SNAKE[@]:$HEAD:1}" ]; do
+	CHERRY="$((RANDOM%COLS))_$((RANDOM%LINES))"
 done
 
 ############################## choose printing mode ############################
@@ -348,9 +342,9 @@ function print_fancy_snake()
 		tputxy "$SNAKE_CHAR" $(getxy $NEW_HEAD)
 	fi
 	if [ $DIR != $OLDIR -a $HEAD -ne $TAIL ]; then
-		if [ $DIR == $UP ]; then
+		if [ $DIR = $UP ]; then
 			tputxy "\033[7m \033[0m" $(getxy $OLD_HEAD)
-		elif [ $OLDIR == $UP ]; then
+		elif [ $OLDIR = $UP ]; then
 			tputxy "$SNAKE_CHAR" $(getxy $OLD_HEAD)
 		fi
 	fi	
@@ -388,13 +382,13 @@ function del_snake()
 
 ################################# initiate game ################################
 
-print_raw_snake "${SNAKE[$HEAD]}"
+print_raw_snake "${SNAKE[@]:$HEAD:1}"
 tputxy "$CHERRY_CHAR" $(getxy $CHERRY)
 
 INPUT=""
-escape_char="$(printf "\033")"
+escape_char=$(printf "\033")
 while [ $DIR -eq 0 ]; do
-	read -sn3 INPUT # get 3 charaters
+	read -sn 3 INPUT # get 3 charaters
 	case $INPUT in
 		"$escape_char[A") DIR=$UP 	;;
 		"$escape_char[B") DIR=$DOWN 	;;
@@ -409,27 +403,27 @@ OLDIR=$DIR
 while [ 42 ]; do
 	##get input
 	DIR_INPUT=$DIR
-	read -sn3 -t 0.03 INPUT # get 3 characters at most
-	if [ "${INPUT:0:1}" == "$escape_char" -a  ${#INPUT} -ge 3 ]; then
+	read -sn 3 -t 0.03 INPUT # get 3 characters at most
+	if [ "${INPUT:0:1}" = "$escape_char" -a  ${#INPUT} -ge 3 ]; then
 		case ${INPUT:1:2} in
 			'[A') DIR_INPUT=$UP 	;;
 			'[B') DIR_INPUT=$DOWN 	;;
 			'[D') DIR_INPUT=$LEFT 	;;
 			'[C') DIR_INPUT=$RIGHT	;;
 		esac
-	elif [ "${INPUT:0:1}" == "q" ]; then
+	elif [ "${INPUT:0:1}" = "q" ]; then
 		tput clear
 		break
-	elif [ "${INPUT:0:1}" == "p" ]; then
+	elif [ "${INPUT:0:1}" = "p" ]; then
 		P_X=$((COLS/2))
 		((P_X-=3))
 		tputxy "PAUSE" $P_X 0
 		INPUT=""
 		while [ "$INPUT" != "p" -a "$INPUT" != "q" ]; do
-			read -sn1 INPUT
+			read -sn 1 INPUT
 		done
 		tputxy "     " $P_X 0
-		if [ "$INPUT" == "q" ]; then
+		if [ "$INPUT" = "q" ]; then
 			tput clear
 			break
 		fi
@@ -444,13 +438,13 @@ while [ 42 ]; do
 	fi
 
 	##move snake and check CHERRY position
-	OLD_HEAD="${SNAKE[$HEAD]}"
-	NEW_HEAD=$(move_head "${SNAKE[$HEAD]}" $DIR)
-	if [ "$NEW_HEAD" == "$CHERRY" ]; then
+	OLD_HEAD="${SNAKE[@]:$HEAD:1}"
+	NEW_HEAD=$(move_head "${SNAKE[@]:$HEAD:1}" $DIR)
+	if [ "$NEW_HEAD" = "$CHERRY" ]; then
 		((ADD_BLOCKS+=4))
 		COLLIDE=1
 		while [ $COLLIDE != 0 ]; do
-			CHERRY="$(rand_coord $COLS)_$(rand_coord $LINES)"
+			CHERRY="$((RANDOM%COLS))_$((RANDOM%LINES))"
 			collide_test "$CHERRY"
 			COLLIDE=$?
 		done
@@ -458,7 +452,7 @@ while [ 42 ]; do
 	fi
 
 	##add blocks or move tail
-	OLD_TAIL="${SNAKE[$TAIL]}"
+	OLD_TAIL="${SNAKE[@]:$TAIL:1}"
 	if [ $ADD_BLOCKS -ne 0 ]; then
 		if [ $HEAD -eq $TAIL -o $DIR -ne $OLDIR ]; then
 			SNAKE+=("$NEW_HEAD")
@@ -477,9 +471,9 @@ while [ 42 ]; do
 			SNAKE[$HEAD]="$NEW_HEAD"
 		fi
 		if [ $HEAD -ne $TAIL ]; then
-			NEW_TAIL=$(move_tail "${SNAKE[$TAIL]}" \
-				"${SNAKE[$NEXT]}")
-			if [ "$NEW_TAIL" == "${SNAKE[$NEXT]}" ]; then
+			NEW_TAIL=$(move_tail "${SNAKE[@]:$TAIL:1}" \
+				"${SNAKE[@]:$NEXT:1}")
+			if [ "$NEW_TAIL" = "${SNAKE[@]:$NEXT:1}" ]; then
 				SNAKE=(${SNAKE[*]:1})
 				((HEAD--))
 			else
