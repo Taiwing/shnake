@@ -1,0 +1,521 @@
+#!/usr/bin/env bash
+
+############################ set terminal config ###############################
+
+TERM_CONF="$(stty -g)"
+stty -echo # make input characters desappear
+tput civis # make the cursor disappear
+
+############################# signal handling ##################################
+
+function sigexit_snake()
+{
+	tput clear
+	echo "snake: exiting..."
+	tput cnorm
+	stty "$TERM_CONF"
+	exit 1
+}
+
+SIG=1
+while [ $SIG -lt 16 ]; do
+	trap "sigexit_snake" $SIG
+	((SIG++))
+done
+
+################################### utils ######################################
+
+function getxy()
+{
+	local X=$(echo $1 | cut -d_ -f1)
+	local Y=$(echo $1 | cut -d_ -f2)
+	echo "$X $Y"
+}
+
+######################### random coordinate generator ##########################
+
+function rand_coord()
+{
+	return $((RANDOM%$1))
+}
+
+################################### tmove ######################################
+
+function tputxy()
+{
+	local Y=$3
+	local X=$2
+	((Y++))
+	((X++))
+	echo -en "\033[${Y};${X}H${1}"
+}
+
+################################### move_head ##################################
+
+function move_head() 
+{
+	local HEAD="$1"
+	local DIRECTION=$2
+	local S_X=$(echo $HEAD | cut -d_ -f1)
+	local S_Y=$(echo $HEAD | cut -d_ -f2)
+	case $DIRECTION in
+		$UP)	((S_Y--));;
+		$DOWN)	((S_Y++));;
+		$LEFT)	((S_X--));;
+		$RIGHT)	((S_X++));;
+	esac
+	echo "${S_X}_${S_Y}"
+}
+
+################################## move_tail ###################################
+
+function move_tail()
+{
+	#get current tail
+	local TAIL_X=$(echo $1 | cut -d_ -f1)
+	local TAIL_Y=$(echo $1 | cut -d_ -f2)
+	#get next block
+	local NEXT_X=$(echo $2 | cut -d_ -f1)
+	local NEXT_Y=$(echo $2 | cut -d_ -f2)
+	#get the direction
+	local DIFF_X=$((NEXT_X-TAIL_X))
+	local DIFF_Y=$((NEXT_Y-TAIL_Y))
+
+	if [ $DIFF_X -eq 0 ]; then
+		Y=$((DIFF_Y < 0 ? TAIL_Y - 1 \
+		: DIFF_Y > 0 ? TAIL_Y + 1 : TAIL_Y))
+		echo "${TAIL_X}_${Y}"
+	elif [ $DIFF_Y -eq 0 ]; then
+		X=$((DIFF_X < 0 ? TAIL_X - 1 \
+		: DIFF_X > 0 ? TAIL_X + 1 : TAIL_X))
+		echo "${X}_${TAIL_Y}"
+	fi
+	#return new coordinates for current tail
+}
+
+################################# collide_test #################################
+
+##compare the snake coordinates to X and Y
+function collide_test()
+{
+	local X=$(echo $1 | cut -d_ -f1)
+	local Y=$(echo $1 | cut -d_ -f2)
+	local POS=$((Y*COLS+X))
+
+	return ${SCREEN[$POS]}
+}
+
+########################### get terminal dimensions ############################
+
+tput clear
+COLS=$(tput cols)
+LINES=$(tput lines)
+
+############################# wall_collide_test ################################
+
+function wall_collide_test()
+{
+	local X=$(echo $1 | cut -d_ -f1)
+	local Y=$(echo $1 | cut -d_ -f2)
+
+	if [ $X -eq -1 -o $Y -eq -1 -o $X -eq $COLS -o $Y -eq $LINES ]; then
+		return 1
+	fi
+	return 0
+}
+############################# get highscore ####################################
+
+SCORE_FILE="snake_scores"
+declare -a HIGH_SCORE
+
+## if SCORE_FILE exists and is readable and writable
+if [ -f "$SCORE_FILE" -a -r "$SCORE_FILE" -a -w "$SCORE_FILE" ]; then
+	i=0
+	while [ $i -lt 10 ]; do
+		read -r LINE
+		if [ $? -ne 0 ]; then
+			break
+		fi
+		HIGH_SCORE+=("$LINE")
+		((i++))
+	done < "$SCORE_FILE"
+fi
+
+############################# is_high_score ####################################
+
+function is_high_score()
+{
+	local SCORE=$1
+	local i=${#HIGH_SCORE[*]}
+	local CUR=0
+
+	while [ $i -gt 0 ]; do
+		((i--))
+		CUR=$(echo ${HIGH_SCORE[$i]} | cut -d_ -f2)
+		if [ $CUR -ge $SCORE ]; then
+			((i++))
+			break
+		fi
+	done
+	return $i
+}
+
+############################ print_high_score ##################################
+
+function print_high_score()
+{
+	local i=0
+	local LEN=${#HIGH_SCORE[*]}
+	local X=$((COLS/2-10))
+	local Y=$((LINES/2+6))
+	while [ $i -lt $LEN -a $Y -lt $LINES ]; do
+		local PLAYER_LOC=$(echo "${HIGH_SCORE[$i]}" | cut -d_ -f1)
+		local SCORE=$(echo "${HIGH_SCORE[$i]}" | cut -d_ -f2)
+		local STR="$(printf "%-13s%07d" "$PLAYER_LOC" $SCORE)"
+		tputxy "$STR" $X $Y
+		((i++))
+		((Y++))
+	done
+}
+
+########################### register_new_score #################################
+
+function register_new_score()
+{
+	local NAME="$1"
+	local SCORE=$2
+	local PLACE=$3
+	local NEW_ENTRY="${NAME}_${SCORE}"
+
+	# if SCORE_FILE exists
+	if [ -f "$SCORE_FILE" ]; then
+		# if it is readable and writable
+		if [ -r "$SCORE_FILE" -a -w "$SCORE_FILE" ]; then
+			local PART_1=""
+			local PART_2=""
+			local LEN=$(wc -l "$SCORE_FILE" | cut -d\  -f1)
+			if [ $PLACE -gt 0 ]; then
+				PART_1=$(head -n $PLACE "$SCORE_FILE")
+			fi
+			if [ $PLACE -lt $LEN ]; then
+				LEN=$((LEN-PLACE))
+				PART_2=$(tail -n $LEN "$SCORE_FILE")
+			fi
+			if [ "$PART_1" != "" ]; then
+				echo "$PART_1" > "$SCORE_FILE"
+				echo "$NEW_ENTRY" >> "$SCORE_FILE"
+			else
+				echo "$NEW_ENTRY" > "$SCORE_FILE"
+			fi
+			if [ "$PART_2" != "" ]; then
+				echo "$PART_2" >> "$SCORE_FILE"
+			fi
+			echo "$(head -n 10 $SCORE_FILE)" > "$SCORE_FILE"
+		fi
+	else
+		echo "$NEW_ENTRY" > "$SCORE_FILE"
+	fi
+}
+
+######################### print_game_over_screen ###############################
+
+function print_game_over_screen()
+{
+	local SCORE=$(printf "%07d" $1)
+	is_high_score $1
+	local PLACE=$?
+	local PLAYER=""
+
+	tputxy "                    " $((COLS/2-10)) $((LINES/2-6))
+	tputxy "     GAME OVER      " $((COLS/2-10)) $((LINES/2-5))
+	tputxy "                    " $((COLS/2-10)) $((LINES/2-4))
+	tputxy "   Score: $SCORE   " $((COLS/2-10)) $((LINES/2-3))
+	tputxy "                    " $((COLS/2-10)) $((LINES/2-2))
+	print_high_score
+	if [ $PLACE -eq 0 ]; then
+		tputxy " CONGRATULATION !!! " $((COLS/2-10)) $((LINES/2-1))
+		tputxy "    You made the    " $((COLS/2-10)) $((LINES/2))
+		tputxy "    best score !    " $((COLS/2-10)) $((LINES/2+1))
+		tputxy "                    " $((COLS/2-10)) $((LINES/2+2))
+	elif [ $PLACE -lt 3 ]; then
+		tputxy " CONGRATULATION !!! " $((COLS/2-10)) $((LINES/2-1))
+		tputxy "   You made it to   " $((COLS/2-10)) $((LINES/2))
+		tputxy "  the  top three !  " $((COLS/2-10)) $((LINES/2+1))
+		tputxy "                    " $((COLS/2-10)) $((LINES/2+2))
+	elif [ $PLACE -le 9 ]; then
+		tputxy " CONGRATULATION !!! " $((COLS/2-10)) $((LINES/2-1))
+		tputxy "   You made it to   " $((COLS/2-10)) $((LINES/2))
+		tputxy "   the  top ten !   " $((COLS/2-10)) $((LINES/2+1))
+		tputxy "                    " $((COLS/2-10)) $((LINES/2+2))
+	elif [ $PLACE -gt 9 ]; then
+		tputxy " press 'q' to leave " $((COLS/2-10)) $((LINES/2-1))
+		tputxy "                    " $((COLS/2-10)) $((LINES/2))
+		local INPUT=""
+		while [ "$INPUT" != "q" ]; do
+			read -sn1 INPUT
+		done
+		tput clear
+		return
+	fi
+	tputxy "  enter your name:  " $((COLS/2-10)) $((LINES/2+3))
+	tputxy "   (10 chars max)   " $((COLS/2-10)) $((LINES/2+4))
+	tput cnorm
+	stty echo
+	while [ 42 ]; do
+		tputxy "                    " $((COLS/2-10)) $((LINES/2+5))
+		tputxy " " $((COLS/2-7)) $((LINES/2+5))
+		PLAYER=""
+		read -p " " -en10 PLAYER
+		case "$PLAYER" in
+			*'_'*)
+				tputxy "  invalid char: '_' " $((COLS/2-10)) \
+					$((LINES/2+4))
+				;;
+			*' '*)
+				tputxy "  invalid char: ' ' " $((COLS/2-10)) \
+					$((LINES/2+4))
+				;;
+			*)
+				break
+				;;
+		esac
+	done
+	if [ "$PLAYER" != "" ]; then
+		register_new_score "$PLAYER" $1 $PLACE
+	fi
+	tput clear
+}
+
+############################# set game variables ###############################
+
+UP=-2
+DOWN=-1
+LEFT=1
+RIGHT=2
+DIR=0
+
+HEAD=0
+TAIL=0
+NEXT=1
+SCREEN_SIZE=$((COLS*LINES))
+declare -a SNAKE SCREEN
+for ((i=0;i<SCREEN_SIZE;i++)); do
+	SCREEN[$i]=0
+done
+rand_coord $COLS
+SNAKE+=("$?")
+rand_coord $LINES
+SNAKE[$HEAD]="${SNAKE[$HEAD]}_${?}"
+LENGTH=1
+ADD_BLOCKS=0
+
+CHERRY="${SNAKE[$HEAD]}"
+while [ "$CHERRY" == "${SNAKE[$HEAD]}" ]; do
+	rand_coord $COLS
+	CHERRY="$?"
+	rand_coord $LINES
+	CHERRY="${CHERRY}_${?}"
+done
+
+############################## choose printing mode ############################
+
+#TODO: let the user choose with an option
+FANCY_MODE=0
+PRINT_COMMAND=""
+CHERRY_CHAR=""
+SNAKE_CHAR=""
+if [ "$TERM" != "linux" -a "$TERM" != "" -a $FANCY_MODE -ne 0 ]; then
+	PRINT_COMMAND='print_fancy_snake $OLDIR $DIR $OLD_HEAD $NEW_HEAD'
+	CHERRY_CHAR="o"
+	SNAKE_CHAR="\u2584"
+else
+	PRINT_COMMAND='print_raw_snake $NEW_HEAD'
+	CHERRY_CHAR="*"
+	SNAKE_CHAR="#"
+fi
+
+############################### print snake ####################################
+
+function print_fancy_snake()
+{
+	local OLDIR=$1
+	local DIR=$2
+	local OLD_HEAD=$3
+	local NEW_HEAD=$4
+	local NEW_X=$(echo $4 | cut -d_ -f1)
+	local NEW_Y=$(echo $4 | cut -d_ -f2)
+	local POS=$((NEW_Y*COLS+NEW_X))
+
+	SCREEN[$POS]=1
+	if [ $DIR -lt 0 ]; then
+		tputxy "\033[7m \033[0m" $(getxy $NEW_HEAD)
+	else
+		tputxy "$SNAKE_CHAR" $(getxy $NEW_HEAD)
+	fi
+	if [ $DIR != $OLDIR -a $HEAD -ne $TAIL ]; then
+		if [ $DIR == $UP ]; then
+			tputxy "\033[7m \033[0m" $(getxy $OLD_HEAD)
+		elif [ $OLDIR == $UP ]; then
+			tputxy "$SNAKE_CHAR" $(getxy $OLD_HEAD)
+		fi
+	fi	
+}
+
+function print_meh_snake()
+{
+	local X=$(echo $1 | cut -d_ -f1)
+	local Y=$(echo $1 | cut -d_ -f2)
+	local POS=$((Y*COLS+X))
+
+	SCREEN[$POS]=1
+	tputxy "\033[7m \033[0m" $(getxy $1)
+}
+
+function print_raw_snake()
+{
+	local X=$(echo $1 | cut -d_ -f1)
+	local Y=$(echo $1 | cut -d_ -f2)
+	local POS=$((Y*COLS+X))
+
+	SCREEN[$POS]=1
+	tputxy "$SNAKE_CHAR" $X $Y
+}
+
+function del_snake()
+{
+	local X=$(echo $1 | cut -d_ -f1)
+	local Y=$(echo $1 | cut -d_ -f2)
+	local POS=$((Y*COLS+X))
+
+	SCREEN[$POS]=0
+	tputxy " " $X $Y
+}
+
+################################# initiate game ################################
+
+print_raw_snake "${SNAKE[$HEAD]}"
+tputxy "$CHERRY_CHAR" $(getxy $CHERRY)
+
+INPUT=""
+escape_char=$(printf "\033")
+while [ $DIR -eq 0 ]; do
+	read -sn3 INPUT # get 3 charaters
+	case $INPUT in
+		"$escape_char[A") DIR=$UP 	;;
+		"$escape_char[B") DIR=$DOWN 	;;
+		"$escape_char[D") DIR=$LEFT 	;;
+		"$escape_char[C") DIR=$RIGHT	;;
+	esac
+done
+OLDIR=$DIR
+
+################################## game loop ###################################
+
+while [ 42 ]; do
+	##get input
+	DIR_INPUT=$DIR
+	read -sn3 -t 0.03 INPUT # get 3 characters at most
+	if [ "${INPUT:0:1}" == "$escape_char" -a  ${#INPUT} -ge 3 ]; then
+		case ${INPUT:1:2} in
+			'[A') DIR_INPUT=$UP 	;;
+			'[B') DIR_INPUT=$DOWN 	;;
+			'[D') DIR_INPUT=$LEFT 	;;
+			'[C') DIR_INPUT=$RIGHT	;;
+		esac
+	elif [ "${INPUT:0:1}" == "q" ]; then
+		tput clear
+		break
+	elif [ "${INPUT:0:1}" == "p" ]; then
+		P_X=$((COLS/2))
+		((P_X-=3))
+		tputxy "PAUSE" $P_X 0
+		INPUT=""
+		while [ "$INPUT" != "p" -a "$INPUT" != "q" ]; do
+			read -sn1 INPUT
+		done
+		tputxy "     " $P_X 0
+		if [ "$INPUT" == "q" ]; then
+			tput clear
+			break
+		fi
+	fi
+
+	##set direction
+	OLDIR=$DIR
+	if [ $DIR -lt 0 -a $DIR_INPUT -gt 0 ]; then
+		DIR=$DIR_INPUT
+	elif [ $DIR -gt 0 -a $DIR_INPUT -lt 0 ]; then
+		DIR=$DIR_INPUT
+	fi
+
+	##move snake and check CHERRY position
+	OLD_HEAD="${SNAKE[$HEAD]}"
+	NEW_HEAD=$(move_head "${SNAKE[$HEAD]}" $DIR)
+	if [ "$NEW_HEAD" == "$CHERRY" ]; then
+		((ADD_BLOCKS+=4))
+		COLLIDE=1
+		while [ $COLLIDE != 0 ]; do
+			rand_coord $COLS
+			CHERRY="$?"
+			rand_coord $LINES
+			CHERRY="${CHERRY}_${?}"
+			collide_test "$CHERRY"
+			COLLIDE=$?
+		done
+		tputxy "$CHERRY_CHAR" $(getxy $CHERRY)
+	fi
+
+	##add blocks or move tail
+	OLD_TAIL="${SNAKE[$TAIL]}"
+	if [ $ADD_BLOCKS -ne 0 ]; then
+		if [ $HEAD -eq $TAIL -o $DIR -ne $OLDIR ]; then
+			SNAKE+=("$NEW_HEAD")
+			((HEAD++))
+		else
+			SNAKE[$HEAD]="$NEW_HEAD"
+		fi
+		((ADD_BLOCKS--))
+		((LENGTH++))
+		OLD_TAIL=""
+	else
+		if [ $DIR -ne $OLDIR ]; then
+			SNAKE+=("$NEW_HEAD")
+			((HEAD++))
+		else
+			SNAKE[$HEAD]="$NEW_HEAD"
+		fi
+		if [ $HEAD -ne $TAIL ]; then
+			NEW_TAIL=$(move_tail "${SNAKE[$TAIL]}" \
+				"${SNAKE[$NEXT]}")
+			if [ "$NEW_TAIL" == "${SNAKE[$NEXT]}" ]; then
+				SNAKE=(${SNAKE[*]:1})
+				((HEAD--))
+			else
+				SNAKE[$TAIL]="$NEW_TAIL"
+			fi
+		fi
+	fi
+	
+	##check snake collision with itself
+	wall_collide_test "$NEW_HEAD"
+	COLLIDE=$?
+	if [ $COLLIDE -eq 0 ]; then
+		collide_test "$NEW_HEAD"
+		COLLIDE=$?
+	fi
+	if [ $COLLIDE -ne 0 ]; then
+		print_game_over_screen $LENGTH
+		break
+	fi
+
+	##print snake
+	if [ "$OLD_TAIL" != "" ]; then
+		del_snake "$OLD_TAIL"
+	fi
+	eval $PRINT_COMMAND
+done
+
+######################### unset custom terminal config #########################
+
+tput cnorm #make the cursor reappear
+stty "$TERM_CONF"
