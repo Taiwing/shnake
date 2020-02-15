@@ -36,7 +36,7 @@ function getxy()
 
 function rand_coord()
 {
-	return $((RANDOM%$1))
+	echo "$((RANDOM%$1))"
 }
 
 ################################### tmove ######################################
@@ -65,6 +65,7 @@ function move_head()
 		$RIGHT)	((S_X++));;
 	esac
 	echo "${S_X}_${S_Y}"
+	#return new coordinates for current head
 }
 
 ################################## move_tail ###################################
@@ -108,8 +109,8 @@ function collide_test()
 ########################### get terminal dimensions ############################
 
 tput clear
-COLS=$(tput cols)
-LINES=$(tput lines)
+COLS="$(tput cols)"
+LINES="$(tput lines)"
 
 ############################# wall_collide_test ################################
 
@@ -302,19 +303,13 @@ declare -a SNAKE SCREEN
 for ((i=0;i<SCREEN_SIZE;i++)); do
 	SCREEN[$i]=0
 done
-rand_coord $COLS
-SNAKE+=("$?")
-rand_coord $LINES
-SNAKE[$HEAD]="${SNAKE[$HEAD]}_${?}"
+SNAKE+=("$(rand_coord $COLS)_$(rand_coord $LINES)")
 LENGTH=1
 ADD_BLOCKS=0
 
 CHERRY="${SNAKE[$HEAD]}"
 while [ "$CHERRY" == "${SNAKE[$HEAD]}" ]; do
-	rand_coord $COLS
-	CHERRY="$?"
-	rand_coord $LINES
-	CHERRY="${CHERRY}_${?}"
+	CHERRY="$(rand_coord $COLS)_$(rand_coord $LINES)"
 done
 
 ############################## choose printing mode ############################
@@ -397,7 +392,7 @@ print_raw_snake "${SNAKE[$HEAD]}"
 tputxy "$CHERRY_CHAR" $(getxy $CHERRY)
 
 INPUT=""
-escape_char=$(printf "\033")
+escape_char="$(printf "\033")"
 while [ $DIR -eq 0 ]; do
 	read -sn3 INPUT # get 3 charaters
 	case $INPUT in
@@ -455,10 +450,7 @@ while [ 42 ]; do
 		((ADD_BLOCKS+=4))
 		COLLIDE=1
 		while [ $COLLIDE != 0 ]; do
-			rand_coord $COLS
-			CHERRY="$?"
-			rand_coord $LINES
-			CHERRY="${CHERRY}_${?}"
+			CHERRY="$(rand_coord $COLS)_$(rand_coord $LINES)"
 			collide_test "$CHERRY"
 			COLLIDE=$?
 		done
