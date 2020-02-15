@@ -96,7 +96,7 @@ function collide_test()
 	local Y=$(echo $1 | cut -d_ -f2)
 	local POS=$((Y*COLS+X))
 
-	return ${SCREEN[@]:$POS:1}
+	[ ${SCREEN[@]:$POS:1} -eq 1 ]
 }
 
 ########################### get terminal dimensions ############################
@@ -112,10 +112,7 @@ function wall_collide_test()
 	local X=$(echo $1 | cut -d_ -f1)
 	local Y=$(echo $1 | cut -d_ -f2)
 
-	if [ $X -eq -1 -o $Y -eq -1 -o $X -eq $COLS -o $Y -eq $LINES ]; then
-		return 1
-	fi
-	return 0
+	[ $X -eq -1 -o $Y -eq -1 -o $X -eq $COLS -o $Y -eq $LINES ]
 }
 ############################# get highscore ####################################
 
@@ -442,11 +439,9 @@ while [ 42 ]; do
 	NEW_HEAD=$(move_head "${SNAKE[@]:$HEAD:1}" $DIR)
 	if [ "$NEW_HEAD" = "$CHERRY" ]; then
 		((ADD_BLOCKS+=4))
-		COLLIDE=1
-		while [ $COLLIDE != 0 ]; do
+		while true; do
 			CHERRY="$((RANDOM%COLS))_$((RANDOM%LINES))"
-			collide_test "$CHERRY"
-			COLLIDE=$?
+			collide_test "$CHERRY" || break
 		done
 		tputxy "$CHERRY_CHAR" $(getxy $CHERRY)
 	fi
@@ -483,13 +478,7 @@ while [ 42 ]; do
 	fi
 	
 	##check snake collision with itself
-	wall_collide_test "$NEW_HEAD"
-	COLLIDE=$?
-	if [ $COLLIDE -eq 0 ]; then
-		collide_test "$NEW_HEAD"
-		COLLIDE=$?
-	fi
-	if [ $COLLIDE -ne 0 ]; then
+	if  wall_collide_test "$NEW_HEAD" || collide_test "$NEW_HEAD"; then
 		print_game_over_screen $LENGTH
 		break
 	fi
