@@ -7,3 +7,6 @@
 - maybe handle resize
 - maybe handle stop signal (reset the terminal when leaving, and clear
   the screen when coming back)
+- add a difficulty option (change speed, the value of the read timeout)
+- make it so that the scores are only kept in the source directory, not
+  wherever the user launches the game
