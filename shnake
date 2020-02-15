@@ -122,11 +122,7 @@ declare -a HIGH_SCORE
 ## if SCORE_FILE exists and is readable and writable
 if [ -f "$SCORE_FILE" -a -r "$SCORE_FILE" -a -w "$SCORE_FILE" ]; then
 	i=0
-	while [ $i -lt 10 ]; do
-		read -r LINE
-		if [ $? -ne 0 ]; then
-			break
-		fi
+	while [ $i -lt 10 ] && read -r LINE; do
 		HIGH_SCORE+=("$LINE")
 		((i++))
 	done < "$SCORE_FILE"
@@ -184,7 +180,7 @@ function register_new_score()
 		if [ -r "$SCORE_FILE" -a -w "$SCORE_FILE" ]; then
 			local PART_1=""
 			local PART_2=""
-			local LEN=$(wc -l "$SCORE_FILE" | cut -d\  -f1)
+			local LEN=$(wc -l "$SCORE_FILE" | awk '{print $1}')
 			if [ $PLACE -gt 0 ]; then
 				PART_1=$(head -n $PLACE "$SCORE_FILE")
 			fi
@@ -466,8 +462,7 @@ while [ 42 ]; do
 			SNAKE[$HEAD]="$NEW_HEAD"
 		fi
 		if [ $HEAD -ne $TAIL ]; then
-			NEW_TAIL=$(move_tail "${SNAKE[@]:$TAIL:1}" \
-				"${SNAKE[@]:$NEXT:1}")
+			NEW_TAIL=$(move_tail "${SNAKE[@]:$TAIL:1}" "${SNAKE[@]:$NEXT:1}")
 			if [ "$NEW_TAIL" = "${SNAKE[@]:$NEXT:1}" ]; then
 				SNAKE=(${SNAKE[*]:1})
 				((HEAD--))
