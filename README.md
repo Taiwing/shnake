@@ -27,3 +27,22 @@ Each cherry caugh makes the snake longer by 4 blocks. If the snake hits itself
 or a wall the game ends. The score at the end is simply the length of the snake.
 
 Use the arrow keys to move around and 'q' to quit the game.
+
+## Example game
+
+```shell
+
+
+
+
+                                 *
+
+
+                                 #
+                                 #
+                        #        #
+                        ###      #
+                          ########
+
+
+```
