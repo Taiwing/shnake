@@ -1,12 +1,20 @@
+---- TODO ----
+
 - test if bash is up to date, tell the user to update it with brew if
   he is on macOS
 - do not count the tail block in collide_test (just give it SNAKE[$TAIL])
   and if it is equal to $NEW_HEAD, return 0 (not a collision)
-- see if there's more to be removed (if this shit can be simplified)
-- maybe add the possibility to move through the walls
-- maybe handle resize
-- maybe handle stop signal (reset the terminal when leaving, and clear
-  the screen when coming back)
-- add a difficulty option (change speed, the value of the read timeout)
 - make it so that the scores are only kept in the source directory, not
   wherever the user launches the game
+
+---- MAYBE ----
+
+- see if there's more to be removed (if this shit can be simplified)
+- add the possibility to move through the walls
+- handle resize
+- handle stop signal (reset the terminal when leaving, and clear
+  the screen when coming back)
+
+---- FEAT ----
+
+- add a difficulty option (change speed, the value of the read timeout)
